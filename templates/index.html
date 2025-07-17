@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confluence ページ翻訳・エクスポートツール</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+    body { background: linear-gradient(120deg, #f8fafc 0%, #e3e9f7 100%); min-height: 100vh; }
+    .navbar { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .card { border-radius: 18px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); border: none; margin-bottom: 1.5rem; }
+    .card-header { background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); color: #fff; border-radius: 18px 18px 0 0; font-weight: 600; letter-spacing: 0.5px; }
+    .btn-primary, .btn-success, .btn-warning, .btn-info { border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: background 0.2s, box-shadow 0.2s; }
+    .btn-primary:hover, .btn-success:hover, .btn-warning:hover, .btn-info:hover { box-shadow: 0 4px 16px rgba(37,99,235,0.15); filter: brightness(1.08); }
+    .form-control { border-radius: 8px; border: 1.5px solid #d1d5db; }
+    .alert { border-radius: 10px; font-size: 1.05rem; box-shadow: 0 2px 8px rgba(255,0,0,0.04); }
+    .content-preview { max-height: 350px; overflow: auto; background: #f8fafc; border-radius: 8px; padding: 0.5rem 1rem; margin-bottom: 0.5rem; font-size: 1.25em; }
+    @media (max-width: 900px) { .container, .container-fluid { padding: 0 0.5rem; } .col-md-3, .col-md-9 { flex: 100%; max-width: 100%; } }
+</style>
+</head>
+<body>
+<div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+                <i class="fas fa-language"></i> <span>Confluence ページ翻訳・エクスポートツール</span>
+            </a>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        <div id="alertArea"></div>
+        <div class="row">
+            <!-- サイドバー -->
+            <div class="col-md-3">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-link"></i> ページID/URLで取得</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="pageInput" class="form-label">ページIDまたはURL</label>
+                            <input type="text" class="form-control mb-2" id="pageInput" placeholder="ページIDまたはURL">
+                        </div>
+                        <button class="btn btn-info w-100 mb-2" onclick="getPageByUrl()">
+                            <i class="fas fa-link"></i> ページ取得
+                        </button>
+                        <small class="text-muted d-block">ConfluenceのページIDまたはURLを入力し「ページ取得」を押してください。</small>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-download"></i> エクスポート</h5>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-warning w-100 mb-2" onclick="exportOriginalContent()">
+                            <i class="fas fa-download"></i> 元のページJSONエクスポート
+                        </button>
+                        <button class="btn btn-success w-100 mb-2" onclick="exportTranslatedContent()">
+                            <i class="fas fa-language"></i> 翻訳後ページJSONエクスポート
+                        </button>
+                        <small class="text-muted d-block">
+                            取得したページをJSON形式でダウンロードします<br>
+                            <i class="fas fa-info-circle"></i> 先に「ページ取得」を実行してください
+                        </small>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <div class="alert alert-info">
+                        <b>使い方</b><br>
+                        1. ページIDまたはURLを入力し「ページ取得」<br>
+                        2. 内容を確認し「JSONエクスポート」<br>
+                        ※ 検索したページのみがエクスポートされます
+                    </div>
+                </div>
+            </div>
+            <!-- メインコンテンツエリア -->
+            <div class="col-md-9">
+                <div class="card mb-3" id="pageDetail" style="display: none;">
+                  <div class="card-header">
+                    <h5><i class="fas fa-info-circle"></i> ページ情報</h5>
+                  </div>
+                  <div class="card-body">
+                    <!-- タブナビゲーション -->
+                    <ul class="nav nav-tabs" id="pageTab" role="tablist">
+                      <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="detail-tab" data-bs-toggle="tab" data-bs-target="#detail" type="button" role="tab" aria-controls="detail" aria-selected="true">ページ詳細</button>
+                      </li>
+                      <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="translated-tab" data-bs-toggle="tab" data-bs-target="#translated" type="button" role="tab" aria-controls="translated" aria-selected="false">翻訳ページ</button>
+                      </li>
+                    </ul>
+                    <div class="tab-content mt-3" id="pageTabContent">
+                      <div class="tab-pane fade show active" id="detail" role="tabpanel" aria-labelledby="detail-tab">
+                        <pre id="pageDetailContent" style="white-space: pre-wrap;"></pre>
+                      </div>
+                      <div class="tab-pane fade" id="translated" role="tabpanel" aria-labelledby="translated-tab">
+                        <pre id="pageTranslatedContent" style="white-space: pre-wrap;"></pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // グローバル変数
+    let currentPageData = null;
+    let currentPageId = '';
+
+    // アラート表示
+    function showAlert(message, type = 'info', detail = '') {
+        const alertArea = document.getElementById('alertArea');
+        let html = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">${message}`;
+        if (detail) {
+            html += `<hr class='my-2'><div class='small text-muted'>${detail}</div>`;
+        }
+        html += '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
+        alertArea.innerHTML = html;
+    }
+    function hideAlert() {
+        document.getElementById('alertArea').innerHTML = '';
+    }
+    function setButtonsDisabled(disabled) {
+        document.querySelectorAll('button').forEach(btn => btn.disabled = disabled);
+    }
+    function showLoading() {
+        setButtonsDisabled(true);
+        showAlert('処理中です...', 'info');
+    }
+    function hideLoading() {
+        setButtonsDisabled(false);
+        hideAlert();
+    }
+
+    // ページID/URLからページを取得
+    async function getPageByUrl() {
+        const pageInput = document.getElementById('pageInput').value.trim();
+        if (!pageInput) {
+            showAlert('ページIDまたはURLを入力してください', 'warning', 'ConfluenceのページIDまたはURLを正しく入力してください。');
+            return;
+        }
+        showLoading();
+        try {
+            const response = await fetch('/api/page_by_url', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({page_input: pageInput})
+            });
+            const data = await response.json();
+            if (response.ok) {
+                currentPageData = data.page;
+                currentPageId = data.page.id;
+                showAlert('ページ取得成功', 'success');
+                // JSON表示
+                document.getElementById('pageDetailContent').textContent = JSON.stringify(data.page, null, 2);
+                document.getElementById('pageTranslatedContent').textContent = data.translated_body ? JSON.stringify({content: data.translated_body}, null, 2) : '翻訳データがありません。';
+                document.getElementById('pageDetail').style.display = 'block';
+            } else {
+                let detail = '';
+                if (response.status === 401 || response.status === 403) {
+                    detail = '認証エラーです。APIトークンやユーザー名、パーミッションを確認してください。';
+                } else if (response.status === 404) {
+                    detail = (data && data.error) ? data.error : 'ページが見つかりません。ページID/URLが正しいか確認してください。';
+                } else if (data && data.error) {
+                    detail = data.error;
+                }
+                showAlert('ページ取得に失敗しました', 'danger', detail);
+            }
+        } catch (error) {
+            showAlert('ネットワークエラーが発生しました', 'danger', 'サーバーが起動しているか、ネットワーク接続を確認してください。');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // エクスポート機能
+    async function exportOriginalContent() {
+        if (!currentPageData) {
+            showAlert('ページデータがありません。先にページ取得を実行してください。', 'warning', 'ページID/URLを入力し「ページ取得」を押してください。');
+            return;
+        }
+        showLoading();
+        try {
+            const exportData = [{
+                title: currentPageData.title,
+                id: currentPageData.id,
+                spaceId: currentPageData.spaceId,
+                status: currentPageData.status,
+                body: currentPageData.content,
+                version: currentPageData.version,
+                createdAt: currentPageData.createdAt,
+                updatedAt: currentPageData.updatedAt,
+                _links: currentPageData._links,
+                level: 0,
+                space_key: 'ECL2SOP'
+            }];
+            const exportResult = {
+                parent_page_id: currentPageId,
+                parent_page_title: currentPageData.title,
+                export_count: exportData.length,
+                export_timestamp: new Date().toISOString(),
+                space_key: 'ECL2SOP',
+                data: exportData
+            };
+            const blob = new Blob([JSON.stringify(exportResult, null, 2)], {
+                type: 'application/json;charset=utf-8'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `confluence_page_export_original_${currentPageId}_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showAlert(`元のページJSONエクスポート完了: ${exportData.length}ページをダウンロードしました (ファイル名: ${a.download})`, 'success');
+        } catch (error) {
+            showAlert('ページのエクスポートに失敗しました', 'danger', 'ネットワークやサーバー状態を確認してください。');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function exportTranslatedContent() {
+        if (!currentPageData) {
+            showAlert('ページデータがありません。先にページ取得を実行してください。', 'warning', 'ページID/URLを入力し「ページ取得」を押してください。');
+            return;
+        }
+        showLoading();
+        try {
+            const translatedBody = document.querySelector('#pageTranslatedContent')?.innerText || null;
+            const exportData = [{
+                title: currentPageData.title,
+                id: currentPageData.id,
+                spaceId: currentPageData.spaceId,
+                status: currentPageData.status,
+                body: currentPageData.content,
+                translated_body: translatedBody,
+                version: currentPageData.version,
+                createdAt: currentPageData.createdAt,
+                updatedAt: currentPageData.updatedAt,
+                _links: currentPageData._links,
+                level: 0,
+                space_key: 'ECL2SOP'
+            }];
+            const exportResult = {
+                parent_page_id: currentPageId,
+                parent_page_title: currentPageData.title,
+                export_count: exportData.length,
+                export_timestamp: new Date().toISOString(),
+                space_key: 'ECL2SOP',
+                data: exportData
+            };
+            const blob = new Blob([JSON.stringify(exportResult, null, 2)], {
+                type: 'application/json;charset=utf-8'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `confluence_page_export_translated_${currentPageId}_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showAlert(`翻訳後ページJSONエクスポート完了: ${exportData.length}ページをダウンロードしました (ファイル名: ${a.download})`, 'success');
+        } catch (error) {
+            showAlert('ページのエクスポートに失敗しました', 'danger', 'ネットワークやサーバー状態を確認してください。');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // 子ページ（階層）を表示
+    async function displayPageChildren(parentId) {
+        const area = document.getElementById('pageChildrenArea');
+        area.innerHTML = '<div class="text-muted">子ページを取得中...</div>';
+        try {
+            const resp = await fetch(`/api/descendants/${parentId}`);
+            const data = await resp.json();
+            if (resp.ok && data.flat_list && data.flat_list.length > 0) {
+                let html = `<h6><i class="fas fa-sitemap"></i> 子ページ階層一覧 <span class="badge bg-secondary ms-2">${data.flat_list.length}件</span></h6>`;
+                html += '<ul class="list-group">';
+                data.flat_list.forEach(page => {
+                    const baseUrl = 'https://nttcom.atlassian.net';
+                    const spaceKey = 'ECL2SOP'; // 固定スペースキー
+                    let pageUrl = '#';
+                    
+                    // スペースキーとページIDから正しいURLを生成
+                    if (page.id) {
+                        pageUrl = `${baseUrl}/wiki/spaces/${spaceKey}/pages/${page.id}`;
+                    }
+                    
+                    html += `<li class="list-group-item">
+                        <a href="${pageUrl}" target="_blank" class="fw-bold text-decoration-none">${page.title || 'タイトルなし'}</a>
+                        <span class="text-muted small ms-2">ID: ${page.id}</span>
+                        <span class="text-muted small ms-2">レベル: ${page.level}</span>
+                        <span class="text-muted small ms-2">スペース: ${spaceKey}</span>
+                    </li>`;
+                });
+                html += '</ul>';
+                area.innerHTML = html;
+            } else {
+                let detail = '';
+                if (resp.status === 401 || resp.status === 403) {
+                    detail = '認証エラーです。APIトークンやユーザー名、パーミッションを確認してください。';
+                } else if (resp.status === 404) {
+                    detail = (data && data.error) ? data.error : 'ページが見つかりません。ページID/URLが正しいか確認してください。';
+                } else if (data && data.error) {
+                    detail = data.error;
+                }
+                area.innerHTML = `<div class="text-muted">子ページはありません</div>${detail ? `<div class='small text-danger mt-2'>${detail}</div>` : ''}`;
+            }
+        } catch (error) {
+            area.innerHTML = '<div class="text-danger">子ページの取得に失敗しました<br><span class="small">ネットワークやサーバー状態を確認してください。</span></div>';
+        }
+    }
+    // 再翻訳ボタン用関数
+    async function retryTranslation() {
+        if (!currentPageId) {
+            showAlert('ページIDがありません。先にページ取得を実行してください。', 'warning');
+            return;
+        }
+        showLoading();
+        try {
+            const response = await fetch('/api/translate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({page_id: currentPageId})
+            });
+            const data = await response.json();
+            if (response.ok && data.translated_body) {
+                document.getElementById('pageTranslatedContent').textContent = data.translated_body;
+                showAlert('再翻訳成功', 'success');
+            } else {
+                let detail = (data && data.error) ? data.error : '翻訳データが取得できませんでした。';
+                document.getElementById('pageTranslatedContent').textContent = `<div class='text-danger'>${detail}</div>`;
+                showAlert('再翻訳に失敗しました', 'danger', detail);
+            }
+        } catch (error) {
+            document.getElementById('pageTranslatedContent').textContent = `<div class='text-danger'>再翻訳処理でエラーが発生しました。</div>`;
+            showAlert('再翻訳処理でエラーが発生しました', 'danger');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // タブ切り替え
+    function showTab(tab) {
+      // タブ内容切り替え
+      document.getElementById('tab-original').style.display = (tab === 'original') ? 'block' : 'none';
+      document.getElementById('tab-translated').style.display = (tab === 'translated') ? 'block' : 'none';
+      // タブボタンの色切り替え
+      document.getElementById('tab-btn-original').style.borderBottomColor = (tab === 'original') ? '#007bff' : '#ccc';
+      document.getElementById('tab-btn-original').style.background = (tab === 'original') ? '#f0f8ff' : '#f8f9fa';
+      document.getElementById('tab-btn-translated').style.borderBottomColor = (tab === 'translated') ? '#007bff' : '#ccc';
+      document.getElementById('tab-btn-translated').style.background = (tab === 'translated') ? '#f0f8ff' : '#f8f9fa';
+    }
+    // 初期表示
+    showTab('original');
+</script>
+<!-- Bootstrap JS & Popper.js (for tabs and other components) -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+<!-- タブ切り替えJSは不要（Bootstrap公式通りHTML属性のみで動作） -->
+</script>
+</body>
+</html>
